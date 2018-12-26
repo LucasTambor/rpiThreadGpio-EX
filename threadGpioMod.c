@@ -6,7 +6,8 @@
  */
 
 /*TODO - Modificações
- *  -Ao pressionar o botão durante 2 segundos: Finaliza thread_led_ctrl (utilizar conditional var) e cria nova thread que faz alguma coisa diferente;
+ *  -Ao pressionar o botão durante 2 segundos: Finaliza thread_led_ctrl e cria nova thread que executa mesmo controle porem 10 vezes mais rapida;
+ * -Antes de mudar o controle de led, uma thread é disparada sinalizando a troca de thread, um terceiro led pisca 3 vezes
  
  */
 
@@ -25,10 +26,12 @@
 #include "gpioFileSys.h"
 
 
-#define LED1	23
+#define LED1	22
 #define LED2	24
 #define BTN1	25
-#define DEBOUNCE    0.05 //s
+
+#define LED3    23
+#define DEBOUNCE    0.1 //s
 
 // Variaveis de Referencia para Operacao
 bool estado_botao = true; // botao eh ativado em false/0 -> pull-up!
@@ -40,10 +43,14 @@ pthread_mutex_t lock;
 pthread_mutex_t endThread;
 bool finalizaThread = false;
 
+pthread_cond_t signal_cond;
+
+
 pthread_t thread_id_hb;
 pthread_t thread_id_led;
 pthread_t thread_id_btn;
 pthread_t thread_id_led_2;
+pthread_t thread_id_sinal;
 
 enum LED_ESTADOS {
   VEL0 = 0,
@@ -67,6 +74,7 @@ void *thread_heart_beat(void *arg);
 void *thread_led_ctrl(void *arg);
 void *thread_btn_read(void *arg);
 void *thread_led_ctrl_2(void *arg);
+void *thread_sinal(void *arg);
 
 //*********************************************************************************************************
 
@@ -86,14 +94,17 @@ int main(int argc, char *argv[]) {
   // Unexporta os pinos
   GPIOUnexport(LED1);
   GPIOUnexport(LED2);
+  GPIOUnexport(LED3);
   GPIOUnexport(BTN1);
   // Exporta agora, certo
   GPIOExport(LED1);
   GPIOExport(LED2);
+  GPIOExport(LED3);
   GPIOExport(BTN1);
   // Define as direcoes de cada um
   GPIODirection(LED1, OUT);
   GPIODirection(LED2, OUT);
+  GPIODirection(LED3, OUT);
   GPIODirection(BTN1, IN);
   
 	// Inicializa threads e mutexes
@@ -119,9 +130,7 @@ int main(int argc, char *argv[]) {
   
   signal(SIGINT, sigintHandler); 
   // Trava momentaneamente nosso programa aqui
-  while(true) {
-      
-      
+  while(true) {      
       if(terminateSignal)
       {
         // Quando a gente ta manipulando IOs... Eh bom "unexport" quando acaba
@@ -153,61 +162,62 @@ void *thread_heart_beat(void *arg) {
 void *thread_led_ctrl(void *arg) {
     
     bool finalizaFlag = false;
-  while(true) {
-    // Soh precisa da trava/destrava pra leitura de estado pra mudar o comportamento
-    pthread_mutex_lock(&lock);
-    if (muda_estado_pisca) {
-        printf("1 - Muda Estado do Led\n");
-      if (estado_led == VEL5) {
-        estado_led = VEL0;
-      } else {
-      	estado_led++;
-      }
-      muda_estado_pisca = false;
-    }
-    pthread_mutex_unlock(&lock);
-    
-    switch(estado_led) {
-      case VEL0:
-        GPIOWrite(LED2, LOW);
-      break;
-      case VEL1:
-      case VEL2:
-      case VEL3:
-      case VEL4:
-        usleep(VEL_LED[estado_led] * 1000);
-        GPIOWrite(LED2, HIGH);
-        usleep(VEL_LED[estado_led] * 1000);
-        GPIOWrite(LED2, LOW);
-      break;
-      case VEL5:
-        GPIOWrite(LED2, HIGH);
-      break;
-    }
-    
-    
-    //Verifica comando para finalizar thread
-    pthread_mutex_lock(&endThread);
-    if(finalizaThread)
-    {
-        finalizaFlag = true;
-        finalizaThread = false;
-        GPIOWrite(LED2, LOW);
-        
-    }
-    pthread_mutex_unlock(&endThread);
-    if(finalizaFlag)
-    {
-        if (pthread_create(&thread_id_led_2, NULL, thread_led_ctrl_2, NULL) != 0) {
-            fprintf(stderr, "Falha na criacao da thread led control 2 \n");
-     
+    while(true) {
+        usleep(0.100 * 1000 * 1000);
+        // Soh precisa da trava/destrava pra leitura de estado pra mudar o comportamento
+        pthread_mutex_lock(&lock);
+        if (muda_estado_pisca) {
+            printf("1 - Muda Estado do Led\n");
+        if (estado_led == VEL5) {
+            estado_led = VEL0;
+        } else {
+            estado_led++;
         }
-        printf("Finalizando thread thread_led_ctrl\n");
-        pthread_exit(NULL);
+        muda_estado_pisca = false;
+        }
+        pthread_mutex_unlock(&lock);
+        
+        switch(estado_led) {
+        case VEL0:
+            GPIOWrite(LED2, LOW);
+        break;
+        case VEL1:
+        case VEL2:
+        case VEL3:
+        case VEL4:
+            usleep(VEL_LED[estado_led] * 1000);
+            GPIOWrite(LED2, HIGH);
+            usleep(VEL_LED[estado_led] * 1000);
+            GPIOWrite(LED2, LOW);
+        break;
+        case VEL5:
+            GPIOWrite(LED2, HIGH);
+        break;
+        }
+        
+    
+        //Verifica comando para finalizar thread
+        pthread_mutex_lock(&endThread);
+        if(finalizaThread)
+        {
+            finalizaFlag = true;
+            finalizaThread = false;
+            GPIOWrite(LED2, LOW);
+            pthread_cond_wait(&signal_cond, &endThread);
+            
+        }
+        pthread_mutex_unlock(&endThread);
+        if(finalizaFlag)
+        {
+            if (pthread_create(&thread_id_led_2, NULL, thread_led_ctrl_2, NULL) != 0) {
+                fprintf(stderr, "Falha na criacao da thread led control 2 \n");
+            }
+            printf("Finalizando thread thread_led_ctrl\n");
+            pthread_exit(NULL);
+        }
     }
-  }
 
-  return NULL;
+    return NULL;
 }
 
 //*********************************************************************************************************
@@ -216,6 +226,7 @@ void *thread_led_ctrl_2(void *arg) {
     
     bool finalizaFlag = false;
   while(true) {
+      usleep(0.100 * 1000 * 1000);
     // Soh precisa da trava/destrava pra leitura de estado pra mudar o comportamento
     pthread_mutex_lock(&lock);
     if (muda_estado_pisca) {
@@ -255,6 +266,7 @@ void *thread_led_ctrl_2(void *arg) {
         finalizaFlag = true;
         finalizaThread = false;
         GPIOWrite(LED2, LOW);
+        pthread_cond_wait(&signal_cond, &endThread);
         
     }
     pthread_mutex_unlock(&endThread);
@@ -267,20 +279,37 @@ void *thread_led_ctrl_2(void *arg) {
         printf("Finalizando thread thread_led_ctrl_2\n");
         pthread_exit(NULL);
     }
+    
   }
 
   return NULL;
 }
 //*********************************************************************************************************
 
+void *thread_sinal(void *arg)
+{
+    int i;
+    for(i = 0; i<3; i++)
+    {
+        usleep(0.1 * 1000 * 1000);
+        GPIOWrite(LED3, HIGH);
+        usleep(0.1 * 1000 * 1000);
+        GPIOWrite(LED3, LOW);
+    }
+    pthread_cond_signal(&signal_cond);
+    pthread_exit(NULL);
+}
+
+//*********************************************************************************************************
+
 void *thread_btn_read(void *arg) {
-    time_t actualTime, oldTime;
+    clock_t actualTime, oldTime;
     double tempo_percorrido;
     bool old_estado_botao = false;
     
     
   while(true) {
-    usleep(0.250 * 1000 * 1000);
+    usleep(0.100 * 1000 * 1000);
     // ve se da pra mexer na variavel de estado do botao
     estado_botao = (GPIORead(BTN1) == 0 ? false : true);
     
@@ -291,9 +320,11 @@ void *thread_btn_read(void *arg) {
             //Borda de descida
             if(old_estado_botao == true)
             {
-                printf("BAIXO\n");
-                actualTime = time(NULL);
-                tempo_percorrido = difftime(actualTime, oldTime);
+                
+                //actualTime = time(NULL);
+                actualTime = clock();
+                //tempo_percorrido = difftime(actualTime, oldTime);
+                tempo_percorrido = (double)(actualTime - oldTime)/CLOCKS_PER_SEC;
                 printf("Tempo percorrido: %f\n", tempo_percorrido);
             }
             old_estado_botao = false;
@@ -302,8 +333,9 @@ void *thread_btn_read(void *arg) {
             //borda de subida
             if(old_estado_botao == false)
             {
-                printf("CIMA\n");
-                oldTime = time(NULL);
+                printf("Botao pressionado!\n");
+                //oldTime = time(NULL);
+                oldTime = clock();
                 
             }
             old_estado_botao = true;
@@ -315,7 +347,6 @@ void *thread_btn_read(void *arg) {
     
     if(tempo_percorrido > DEBOUNCE)
     {
-        printf("Botao pressionado!\n");
         if(tempo_percorrido < 2)
         {
             pthread_mutex_lock(&lock);
@@ -327,8 +358,10 @@ void *thread_btn_read(void *arg) {
             pthread_mutex_lock(&endThread);
             finalizaThread = true;
             pthread_mutex_unlock(&endThread);
-            tempo_percorrido = 0;
-            pthread_join(thread_id_led, 0);
+            if (pthread_create(&thread_id_sinal, NULL, thread_sinal, NULL) != 0) {
+                fprintf(stderr, "Falha na criacao da thread de Sinalização  \n");
+            }   
+            pthread_join(thread_id_sinal, 0);
         }
         
     }
