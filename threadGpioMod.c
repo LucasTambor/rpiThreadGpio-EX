@@ -43,6 +43,7 @@ bool finalizaThread = false;
 pthread_t thread_id_hb;
 pthread_t thread_id_led;
 pthread_t thread_id_btn;
+pthread_t thread_id_led_2;
 
 enum LED_ESTADOS {
   VEL0 = 0,
@@ -55,6 +56,7 @@ enum LED_ESTADOS {
 };
 
 int VEL_LED[NUM_ESTADOS] = {0, 250, 500, 750, 1000, 1};
+int VEL_LED_2[NUM_ESTADOS] = {0, 25, 50, 75, 100, 1};
 
 int estado_led = VEL0;
 
@@ -64,8 +66,9 @@ volatile bool terminateSignal = 0;
 void *thread_heart_beat(void *arg);
 void *thread_led_ctrl(void *arg);
 void *thread_btn_read(void *arg);
+void *thread_led_ctrl_2(void *arg);
 
-
+//*********************************************************************************************************
 
 /* Signal Handler for SIGINT */
 void sigintHandler(int sig_num) 
@@ -76,6 +79,8 @@ void sigintHandler(int sig_num)
     terminateSignal = 1;
 
 } 
+
+//*********************************************************************************************************
 
 int main(int argc, char *argv[]) {
   // Unexporta os pinos
@@ -103,7 +108,7 @@ int main(int argc, char *argv[]) {
   } 
 
   if (pthread_create(&thread_id_led, NULL, thread_led_ctrl, NULL) != 0) {
-    fprintf(stderr, "Falha na criacao da thread de led control \n");
+    fprintf(stderr, "Falha na criacao da thread de led control 1 \n");
     return 1;
   }
  
@@ -116,17 +121,21 @@ int main(int argc, char *argv[]) {
   // Trava momentaneamente nosso programa aqui
   while(true) {
       
+      
       if(terminateSignal)
       {
         // Quando a gente ta manipulando IOs... Eh bom "unexport" quando acaba
         GPIOUnexport(LED1);
         GPIOUnexport(LED2);
         GPIOUnexport(BTN1);
+        return 0;
       }  
     }   
   return 0;
   
 }
+
+//*********************************************************************************************************
 
 void *thread_heart_beat(void *arg) {
   while(true) {
@@ -139,6 +148,8 @@ void *thread_heart_beat(void *arg) {
   return NULL;
 }
 
+//*********************************************************************************************************
+
 void *thread_led_ctrl(void *arg) {
     
     bool finalizaFlag = false;
@@ -146,6 +157,7 @@ void *thread_led_ctrl(void *arg) {
     // Soh precisa da trava/destrava pra leitura de estado pra mudar o comportamento
     pthread_mutex_lock(&lock);
     if (muda_estado_pisca) {
+        printf("1 - Muda Estado do Led\n");
       if (estado_led == VEL5) {
         estado_led = VEL0;
       } else {
@@ -186,6 +198,11 @@ void *thread_led_ctrl(void *arg) {
     pthread_mutex_unlock(&endThread);
     if(finalizaFlag)
     {
+        if (pthread_create(&thread_id_led_2, NULL, thread_led_ctrl_2, NULL) != 0) {
+            fprintf(stderr, "Falha na criacao da thread led control 2 \n");
+     
+        }
+        printf("Finalizando thread thread_led_ctrl\n");
         pthread_exit(NULL);
     }
   }
@@ -193,14 +210,77 @@ void *thread_led_ctrl(void *arg) {
   return NULL;
 }
 
+//*********************************************************************************************************
+
+void *thread_led_ctrl_2(void *arg) {
+    
+    bool finalizaFlag = false;
+  while(true) {
+    // Soh precisa da trava/destrava pra leitura de estado pra mudar o comportamento
+    pthread_mutex_lock(&lock);
+    if (muda_estado_pisca) {
+        printf("2 - Muda Estado do Led\n");
+      if (estado_led == VEL5) {
+        estado_led = VEL0;
+      } else {
+      	estado_led++;
+      }
+      muda_estado_pisca = false;
+    }
+    pthread_mutex_unlock(&lock);
+    
+    switch(estado_led) {
+      case VEL0:
+        GPIOWrite(LED2, LOW);
+      break;
+      case VEL1:
+      case VEL2:
+      case VEL3:
+      case VEL4:
+        usleep(VEL_LED_2[estado_led] * 1000);
+        GPIOWrite(LED2, HIGH);
+        usleep(VEL_LED_2[estado_led] * 1000);
+        GPIOWrite(LED2, LOW);
+      break;
+      case VEL5:
+        GPIOWrite(LED2, HIGH);
+      break;
+    }
+    
+    
+    //Verifica comando para finalizar thread
+    pthread_mutex_lock(&endThread);
+    if(finalizaThread)
+    {
+        finalizaFlag = true;
+        finalizaThread = false;
+        GPIOWrite(LED2, LOW);
+        
+    }
+    pthread_mutex_unlock(&endThread);
+    if(finalizaFlag)
+    {
+        if (pthread_create(&thread_id_led, NULL, thread_led_ctrl, NULL) != 0) {
+            fprintf(stderr, "Falha na criacao da thread de led control 1  \n");
+            
+        }
+        printf("Finalizando thread thread_led_ctrl_2\n");
+        pthread_exit(NULL);
+    }
+  }
+
+  return NULL;
+}
+//*********************************************************************************************************
+
 void *thread_btn_read(void *arg) {
-    time_t oldTime;
+    time_t actualTime, oldTime;
     double tempo_percorrido;
     bool old_estado_botao = false;
     
     
   while(true) {
-		usleep(0.250 * 1000 * 1000);
+    usleep(0.250 * 1000 * 1000);
     // ve se da pra mexer na variavel de estado do botao
     estado_botao = (GPIORead(BTN1) == 0 ? false : true);
     
@@ -212,10 +292,11 @@ void *thread_btn_read(void *arg) {
             if(old_estado_botao == true)
             {
                 printf("BAIXO\n");
-                tempo_percorrido = difftime(time(NULL), oldTime);
-                
+                actualTime = time(NULL);
+                tempo_percorrido = difftime(actualTime, oldTime);
+                printf("Tempo percorrido: %f\n", tempo_percorrido);
             }
-            old_estado_botao = true;
+            old_estado_botao = false;
         break;
         case true:
             //borda de subida
@@ -240,18 +321,18 @@ void *thread_btn_read(void *arg) {
             pthread_mutex_lock(&lock);
             muda_estado_pisca = true;
             pthread_mutex_unlock(&lock); 
+            
+        }else if(tempo_percorrido > 2 && tempo_percorrido < 5){
+            printf("Finaliza Thread Atual\n");
+            pthread_mutex_lock(&endThread);
+            finalizaThread = true;
+            pthread_mutex_unlock(&endThread);
+            tempo_percorrido = 0;
+            pthread_join(thread_id_led, 0);
         }
         
-        tempo_percorrido = 0;
-    }else if(tempo_percorrido > 2 && tempo_percorrido < 4){
-        printf("Finaliza Thread Atual\n");
-        pthread_mutex_lock(&endThread);
-        finalizaThread = true;
-        pthread_mutex_unlock(&endThread);
-        tempo_percorrido = 0;
-        pthread_join(thread_id_led, 0);
     }
-    
+    tempo_percorrido = 0;
     
   }
   return NULL;
