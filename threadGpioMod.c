@@ -1,14 +1,13 @@
 /**
  *  UNISAL 2018 - Sistemas Operacionais Embarcados - Linux Embarcado
- *  Atividade - Controle de GPIO via Sysfs
+ *  Atividade - Controle de GPIO em threads via Sysfs
  *  Lucas Tamborrino
  * 
  */
 
-/*TODO - Modificações
+/* Modificações
  *  -Ao pressionar o botão durante 2 segundos: Finaliza thread_led_ctrl e cria nova thread que executa mesmo controle porem 10 vezes mais rapida;
- * -Antes de mudar o controle de led, uma thread é disparada sinalizando a troca de thread, um terceiro led pisca 3 vezes
- 
+ * -Antes de mudar o controle de led, uma thread é disparada sinalizando a troca de thread onde um terceiro led pisca 3 vezes
  */
 
 // Inclusao de bibliotecas necessarias
@@ -91,57 +90,63 @@ void sigintHandler(int sig_num)
 //*********************************************************************************************************
 
 int main(int argc, char *argv[]) {
-  // Unexporta os pinos
-  GPIOUnexport(LED1);
-  GPIOUnexport(LED2);
-  GPIOUnexport(LED3);
-  GPIOUnexport(BTN1);
-  // Exporta agora, certo
-  GPIOExport(LED1);
-  GPIOExport(LED2);
-  GPIOExport(LED3);
-  GPIOExport(BTN1);
-  // Define as direcoes de cada um
-  GPIODirection(LED1, OUT);
-  GPIODirection(LED2, OUT);
-  GPIODirection(LED3, OUT);
-  GPIODirection(BTN1, IN);
+    // Unexporta os pinos
+    GPIOUnexport(LED1);
+    GPIOUnexport(LED2);
+    GPIOUnexport(LED3);
+    GPIOUnexport(BTN1);
+    // Exporta agora, certo
+    GPIOExport(LED1);
+    GPIOExport(LED2);
+    GPIOExport(LED3);
+    GPIOExport(BTN1);
+    // Define as direcoes de cada um
+    GPIODirection(LED1, OUT);
+    GPIODirection(LED2, OUT);
+    GPIODirection(LED3, OUT);
+    GPIODirection(BTN1, IN);
   
-	// Inicializa threads e mutexes
-  if (pthread_mutex_init(&lock, NULL) != 0) {
-    fprintf(stderr, "Falha na iniciliazacao do Mutex \n");
-    return 1;
-  }
+        // Inicializa threads e mutexes
+    if (pthread_mutex_init(&lock, NULL) != 0) {
+        fprintf(stderr, "Falha na iniciliazacao do Mutex \n");
+        return 1;
+    }
   
-  if (pthread_create(&thread_id_hb, NULL, thread_heart_beat, NULL) != 0) {
-    fprintf(stderr, "Falha na criacao da thread de heart beat \n");
-    return 1;
-  } 
+    if(pthread_cond_init(&signal_cond, NULL) != 0)
+    {
+        fprintf(stderr, "Falha na iniciliazacao da Condicional \n");
+        return 1;
+    }
+  
+    if (pthread_create(&thread_id_hb, NULL, thread_heart_beat, NULL) != 0) {
+        fprintf(stderr, "Falha na criacao da thread de heart beat \n");
+        return 1;
+    } 
 
-  if (pthread_create(&thread_id_led, NULL, thread_led_ctrl, NULL) != 0) {
-    fprintf(stderr, "Falha na criacao da thread de led control 1 \n");
-    return 1;
-  }
- 
-  if (pthread_create(&thread_id_btn, NULL, thread_btn_read, NULL) != 0) {
-    fprintf(stderr, "Falha na criacao da thread de botao \n");
-    return 1;
-  }
-  
-  signal(SIGINT, sigintHandler); 
-  // Trava momentaneamente nosso programa aqui
-  while(true) {      
-      if(terminateSignal)
-      {
-        // Quando a gente ta manipulando IOs... Eh bom "unexport" quando acaba
-        GPIOUnexport(LED1);
-        GPIOUnexport(LED2);
-        GPIOUnexport(BTN1);
-        return 0;
-      }  
-    }   
-  return 0;
-  
+    if (pthread_create(&thread_id_led, NULL, thread_led_ctrl, NULL) != 0) {
+        fprintf(stderr, "Falha na criacao da thread de led control 1 \n");
+        return 1;
+    }
+    
+    if (pthread_create(&thread_id_btn, NULL, thread_btn_read, NULL) != 0) {
+        fprintf(stderr, "Falha na criacao da thread de botao \n");
+        return 1;
+    }
+    
+    signal(SIGINT, sigintHandler); 
+    // Trava momentaneamente nosso programa aqui
+    while(true) {      
+        if(terminateSignal)
+        {
+            // Quando a gente ta manipulando IOs... Eh bom "unexport" quando acaba
+            GPIOUnexport(LED1);
+            GPIOUnexport(LED2);
+            GPIOUnexport(BTN1);
+            return 0;
+        }  
+        }   
+    return 0;
+    
 }
 
 //*********************************************************************************************************
@@ -161,6 +166,11 @@ void *thread_heart_beat(void *arg) {
 
 void *thread_led_ctrl(void *arg) {
     
+    //Precisa inicializar novamente a condicional?
+    if(pthread_cond_init(&signal_cond, NULL) != 0)
+    {
+        fprintf(stderr, "Falha na iniciliazacao da Condicional \n");
+    }
     bool finalizaFlag = false;
     while(true) {
         usleep(0.100 * 1000 * 1000);
@@ -203,6 +213,8 @@ void *thread_led_ctrl(void *arg) {
             finalizaFlag = true;
             finalizaThread = false;
             GPIOWrite(LED2, LOW);
+            
+            //Espera signal cond da thread sinal
             pthread_cond_wait(&signal_cond, &endThread);
             
         }
@@ -225,6 +237,10 @@ void *thread_led_ctrl(void *arg) {
 void *thread_led_ctrl_2(void *arg) {
     
     bool finalizaFlag = false;
+    if(pthread_cond_init(&signal_cond, NULL) != 0)
+    {
+        fprintf(stderr, "Falha na iniciliazacao da Condicional \n");
+    }
   while(true) {
       usleep(0.100 * 1000 * 1000);
     // Soh precisa da trava/destrava pra leitura de estado pra mudar o comportamento
@@ -266,6 +282,8 @@ void *thread_led_ctrl_2(void *arg) {
         finalizaFlag = true;
         finalizaThread = false;
         GPIOWrite(LED2, LOW);
+        
+        //Espera signal cond da thread sinal
         pthread_cond_wait(&signal_cond, &endThread);
         
     }
@@ -296,7 +314,10 @@ void *thread_sinal(void *arg)
         usleep(0.1 * 1000 * 1000);
         GPIOWrite(LED3, LOW);
     }
+    pthread_mutex_lock(&endThread);
     pthread_cond_signal(&signal_cond);
+    pthread_mutex_unlock(&endThread);
+    
     pthread_exit(NULL);
 }
 
@@ -362,6 +383,7 @@ void *thread_btn_read(void *arg) {
                 fprintf(stderr, "Falha na criacao da thread de Sinalização  \n");
             }   
             pthread_join(thread_id_sinal, 0);
+            
         }
         
     }
