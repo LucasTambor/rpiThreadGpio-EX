@@ -336,7 +336,6 @@ void *thread_btn_read(void *arg) {
     
   while(true) {
     usleep(0.100 * 1000 * 1000);
-    // ve se da pra mexer na variavel de estado do botao
     estado_botao = (GPIORead(BTN1) == 0 ? false : true);
     
     switch(!estado_botao)
