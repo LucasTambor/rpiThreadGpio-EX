@@ -85,8 +85,7 @@ void *thread_sinal(void *arg);
 /* Signal Handler for SIGINT */
 void sigintHandler(int sig_num) 
 { 
-    /* Reset handler to catch SIGINT next time. 
-       Refer http://en.cppreference.com/w/c/program/signal */
+    
     printf("\n Terminate \n"); 
     terminateSignal = 1;
 
@@ -116,7 +115,7 @@ int main(int argc, char *argv[]) {
         fprintf(stderr, "Falha na iniciliazacao do Mutex \n");
         return 1;
     }
-  
+    // Inicializa condicional
     if(pthread_cond_init(&signal_cond, NULL) != 0)
     {
         fprintf(stderr, "Falha na iniciliazacao da Condicional \n");
@@ -139,11 +138,11 @@ int main(int argc, char *argv[]) {
     }
     
     signal(SIGINT, sigintHandler); 
-    // Trava momentaneamente nosso programa aqui
+    
     while(true) {      
         if(terminateSignal)
         {
-            // Quando a gente ta manipulando IOs... Eh bom "unexport" quando acaba
+            // Unexporta pinos ao final da execução
             GPIOUnexport(LED1);
             GPIOUnexport(LED2);
             GPIOUnexport(BTN1);
@@ -345,10 +344,7 @@ void *thread_btn_read(void *arg) {
             //Borda de descida
             if(old_estado_botao == true)
             {
-                
-                //actualTime = time(NULL);
                 actualTime = clock();
-                //tempo_percorrido = difftime(actualTime, oldTime);
                 tempo_percorrido = (double)(actualTime - oldTime)/CLOCKS_PER_SEC;
                 printf("Tempo percorrido: %f\n", tempo_percorrido);
             }
@@ -359,7 +355,6 @@ void *thread_btn_read(void *arg) {
             if(old_estado_botao == false)
             {
                 printf("Botao pressionado!\n");
-                //oldTime = time(NULL);
                 oldTime = clock();
                 
             }
