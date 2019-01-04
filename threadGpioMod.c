@@ -2,12 +2,18 @@
  *  UNISAL 2018 - Sistemas Operacionais Embarcados - Linux Embarcado
  *  Atividade - Controle de GPIO em threads via Sysfs
  *  Lucas Tamborrino
- * 
  */
 
-/* Modificações
- *  -Ao pressionar o botão durante 2 segundos: Finaliza thread_led_ctrl e cria nova thread que executa mesmo controle porem 10 vezes mais rapida;
- * -Antes de mudar o controle de led, uma thread é disparada sinalizando a troca de thread onde um terceiro led pisca 3 vezes
+/* 
+ * Modificações:
+ * -Funções de gerenciamento de GPIO foram movidas para .h e .c pŕoprios.
+ *    
+ *  Adição de Funcionalidades:
+ * -Leitura do botão agora é baseada no tempo em que o mesmo é pressionado;
+ * -Adição de 2 novas threads: thread_id_led_2 e thread_id_sinal;
+ * -Ao pressionar o botão por t > 2 segundos: Finaliza thread_led_ctrl e cria nova thread que executa mesmo controle porem 10 vezes mais rapida;
+ * -Entre as musdanças de thread de controle, a thread "thread_id_sinal" é disparada sinalizando a troca de controle onde um terceiro led pisca 3 vezes;
+ * -Ao pressionar o crtl+c no terminal a função "sigintHandler" seta flag para main, que unexporta os pinos e finaliza o programa.
  */
 
 // Inclusao de bibliotecas necessarias
@@ -44,7 +50,6 @@ bool finalizaThread = false;
 
 pthread_cond_t signal_cond;
 
-
 pthread_t thread_id_hb;
 pthread_t thread_id_led;
 pthread_t thread_id_btn;
@@ -52,13 +57,13 @@ pthread_t thread_id_led_2;
 pthread_t thread_id_sinal;
 
 enum LED_ESTADOS {
-  VEL0 = 0,
-  VEL1,
-  VEL2,
-  VEL3,
-  VEL4,
-  VEL5,
-  NUM_ESTADOS
+    VEL0 = 0,
+    VEL1,
+    VEL2,
+    VEL3,
+    VEL4,
+    VEL5,
+    NUM_ESTADOS
 };
 
 int VEL_LED[NUM_ESTADOS] = {0, 250, 500, 750, 1000, 1};
