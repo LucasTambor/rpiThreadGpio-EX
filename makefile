@@ -1,11 +1,9 @@
 GCC := arm-linux-gnueabihf-gcc
-OUTPUT := thread_gpio_mod
+OUTPUT := thread_gpio
 SOURCES := $(wildcard *.c)
 CCFLAGS := -pthread -Wall
 
-all: $(OUTPUT)
-
-$(OUTPUT):
+all: 
 	$(GCC) -o $(OUTPUT) $(CCFLAGS) $(SOURCES)
 
 clean:
