@@ -1,0 +1,8 @@
+[Unit]
+Description=Thread GPIO 
+
+[Service]
+ExecStart=/home/pi/unisal/atividades/gpioBtnC/gpioBtnThread 
+
+[Install]
+WantedBy=multi-user.target
