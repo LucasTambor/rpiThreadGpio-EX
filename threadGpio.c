@@ -119,7 +119,7 @@ int main(int argc, char *argv[]) {
 //*********************************************************************************************************
 
 void *thread_heart_beat(void *arg) {
-  while(true) {
+  while(!terminateSignal) {
     usleep(0.5 * 1000 * 1000);
     GPIOWrite(LED1, HIGH);
     usleep(0.5 * 1000 * 1000);
