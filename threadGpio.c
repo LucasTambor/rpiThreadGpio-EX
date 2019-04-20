@@ -38,10 +38,10 @@ enum LED_ESTADOS {
 };
 
 int VEL_LED[NUM_ESTADOS] = {0, 1000, 200, 100, 1};
-
 int estado_led = VEL0;
-
 volatile bool terminateSignal = 0;
+
+const char* logFreq[] = {"OFF", "1Hz", "5Hz", "10Hz", "ON"};
 
 // Funcoes de Suporte para Thread de Aplicação
 void *thread_heart_beat(void *arg);
@@ -146,7 +146,7 @@ void *thread_led_ctrl(void *arg) {
                 estado_led++;
                 
             }
-            syslog(LOG_NOTICE, "Estado LED: %d\n", estado_led);
+            syslog(LOG_NOTICE, "Estado LED: %s\n", logFreq[estado_led]);
             muda_estado_pisca = false;
         }
         pthread_mutex_unlock(&lock);
