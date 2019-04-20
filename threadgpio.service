@@ -2,7 +2,7 @@
 Description=Thread GPIO 
 
 [Service]
-ExecStart=/home/pi/unisal/atividades/gpioBtnC/gpioBtnThread 
+ExecStart=/home/pi/unisal/atividades/gpioBtnC/thread_gpio 
 
 [Install]
 WantedBy=multi-user.target
