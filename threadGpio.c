@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <signal.h>
 #include "gpioFileSys.h"
+#include <syslog.h>
 
 
 #define LED1	23
@@ -51,7 +52,7 @@ void *thread_btn_read(void *arg);
 // Função para lidar com sinalização de eventos
 void sigintHandler(int sig_num) 
 { 
-    printf("\n Terminate \n"); 
+    syslog(LOG_NOTICE, "\n Terminate \n"); 
     terminateSignal = true;
 } 
 
@@ -138,13 +139,15 @@ void *thread_led_ctrl(void *arg) {
         // Soh precisa da trava/destrava pra leitura de estado pra mudar o comportamento
         pthread_mutex_lock(&lock);
         if (muda_estado_pisca) {
-            printf("Muda Estado do Led\n");
-        if (estado_led == VEL4) {
-            estado_led = VEL0;
-        } else {
-            estado_led++;
-        }
-        muda_estado_pisca = false;
+            syslog(LOG_NOTICE, "Muda Estado do Led\n");
+            if (estado_led == VEL4) {
+                estado_led = VEL0;
+            } else {
+                estado_led++;
+                
+            }
+            syslog(LOG_NOTICE, "Estado LED: %d\n", estado_led);
+            muda_estado_pisca = false;
         }
         pthread_mutex_unlock(&lock);
         
@@ -191,7 +194,7 @@ void *thread_btn_read(void *arg) {
         // borda de subida
         if(estado_botao)
         {
-            printf("Botão Pressionado!\n");
+            syslog(LOG_NOTICE,"Botão Pressionado!\n");
             pthread_mutex_lock(&lock);
             muda_estado_pisca = true;
             pthread_mutex_unlock(&lock);
